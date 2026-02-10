@@ -112,8 +112,8 @@ jobs:
 
       - name: Download ONNX Runtime aarch64
         run: |
-          ORT_VERSION=1.21.1
-          wget -q https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-aarch64-${ORT_VERSION}.tgz
+          ORT_VERSION=1.23.2
+          wget -nv https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-aarch64-${ORT_VERSION}.tgz
           tar xzf onnxruntime-linux-aarch64-${ORT_VERSION}.tgz
           mv onnxruntime-linux-aarch64-${ORT_VERSION} ort-aarch64
 
@@ -160,8 +160,8 @@ jobs:
 
       - name: Download ONNX Runtime x86_64
         run: |
-          ORT_VERSION=1.21.1
-          wget -q https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz
+          ORT_VERSION=1.23.2
+          wget -nv https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz
           tar xzf onnxruntime-linux-x64-${ORT_VERSION}.tgz
           mv onnxruntime-linux-x64-${ORT_VERSION} ort-x64
 
