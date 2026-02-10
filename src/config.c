@@ -31,14 +31,16 @@ static void parse_config_file(const char* path) {
         while (*p == ' ' || *p == '\t') p++;
         if (*p == '#' || *p == '\n' || *p == '\0') continue;
 
-        char key[64], value[256];
-        if (sscanf(p, "%63[^= ] = %255s", key, value) != 2) continue;
+        char key[64], value[512];
+        if (sscanf(p, "%63[^= ] = %511s", key, value) != 2) continue;
 
-        if (strcmp(key, "backend") == 0)
-            snprintf(g_config.backend, sizeof(g_config.backend), "%s", value);
-        else if (strcmp(key, "suffix") == 0)
-            snprintf(g_config.suffix, sizeof(g_config.suffix), "%s", value);
-        else if (strcmp(key, "model_dir") == 0)
+        if (strcmp(key, "backend") == 0) {
+            strncpy(g_config.backend, value, sizeof(g_config.backend) - 1);
+            g_config.backend[sizeof(g_config.backend) - 1] = '\0';
+        } else if (strcmp(key, "suffix") == 0) {
+            strncpy(g_config.suffix, value, sizeof(g_config.suffix) - 1);
+            g_config.suffix[sizeof(g_config.suffix) - 1] = '\0';
+        } else if (strcmp(key, "model_dir") == 0)
             snprintf(g_config.model_dir, sizeof(g_config.model_dir), "%s", value);
         else if (strcmp(key, "threads") == 0)
             g_config.threads = atoi(value);
@@ -63,10 +65,10 @@ const NeuronShimConfig* neuron_shim_config_load(void) {
 
     /* Environment variables override everything */
     env = getenv("NEURON_SHIM_BACKEND");
-    if (env) snprintf(g_config.backend, sizeof(g_config.backend), "%s", env);
+    if (env) { strncpy(g_config.backend, env, sizeof(g_config.backend) - 1); g_config.backend[sizeof(g_config.backend) - 1] = '\0'; }
 
     env = getenv("NEURON_SHIM_SUFFIX");
-    if (env) snprintf(g_config.suffix, sizeof(g_config.suffix), "%s", env);
+    if (env) { strncpy(g_config.suffix, env, sizeof(g_config.suffix) - 1); g_config.suffix[sizeof(g_config.suffix) - 1] = '\0'; }
 
     env = getenv("NEURON_SHIM_MODEL_DIR");
     if (env) snprintf(g_config.model_dir, sizeof(g_config.model_dir), "%s", env);

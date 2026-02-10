@@ -31,6 +31,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <dlfcn.h>
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
@@ -154,11 +155,13 @@ static int onnx_create(void** ctx) {
     int num_threads = 4;
     const char* env_threads = getenv("NEURON_SHIM_NUM_THREADS");
     if (env_threads) num_threads = atoi(env_threads);
-    c->api->SetIntraOpNumThreads(c->session_opts, num_threads);
+    ORT_CHECK(c->api,
+        c->api->SetIntraOpNumThreads(c->session_opts, num_threads));
 
     /* Enable graph optimizations */
-    c->api->SetSessionGraphOptimizationLevel(c->session_opts,
-                                              ORT_ENABLE_ALL);
+    ORT_CHECK(c->api,
+        c->api->SetSessionGraphOptimizationLevel(c->session_opts,
+                                                  ORT_ENABLE_ALL));
 
     /*
      * Execution provider registration.
@@ -208,17 +211,31 @@ static int onnx_create(void** ctx) {
             }
         }
 
-        /* Try AMD MIGraphX (replaces ROCm EP from ORT 1.23+) */
+        /* Try AMD MIGraphX (replaces ROCm EP from ORT 1.23+)
+         *
+         * These are standalone functions, not in the ORT API struct.
+         * They only exist in GPU builds, so we dlsym() to avoid
+         * link errors with CPU-only ORT.
+         */
         {
-            OrtStatus* s = OrtSessionOptionsAppendExecutionProvider_MIGraphX(
-                    c->session_opts, 0 /* device_id */);
-            if (!s) {
-                fprintf(stderr, "[neuron-shim][onnx] MIGraphX EP: registered\n");
-            } else {
-                c->api->ReleaseStatus(s);
-                /* Fallback: try legacy ROCm EP for older ORT versions */
-                s = OrtSessionOptionsAppendExecutionProvider_ROCM(
-                        c->session_opts, 0);
+            typedef OrtStatus* (*MIGraphXFn)(OrtSessionOptions*, int);
+            MIGraphXFn migraphx_fn = (MIGraphXFn)dlsym(RTLD_DEFAULT,
+                "OrtSessionOptionsAppendExecutionProvider_MIGraphX");
+            if (migraphx_fn) {
+                OrtStatus* s = migraphx_fn(c->session_opts, 0 /* device_id */);
+                if (!s) {
+                    fprintf(stderr, "[neuron-shim][onnx] MIGraphX EP: registered\n");
+                } else {
+                    c->api->ReleaseStatus(s);
+                }
+            }
+
+            /* Fallback: try legacy ROCm EP for older ORT versions */
+            typedef OrtStatus* (*ROCmFn)(OrtSessionOptions*, int);
+            ROCmFn rocm_fn = (ROCmFn)dlsym(RTLD_DEFAULT,
+                "OrtSessionOptionsAppendExecutionProvider_ROCM");
+            if (rocm_fn && !migraphx_fn) {
+                OrtStatus* s = rocm_fn(c->session_opts, 0);
                 if (!s) {
                     fprintf(stderr, "[neuron-shim][onnx] ROCm EP: registered\n");
                 } else {
