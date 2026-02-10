@@ -1,0 +1,221 @@
+name: Build neuron-shim
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ----------------------------------------------------------------
+  # Native x86_64 build (fast, runs tests)
+  # ----------------------------------------------------------------
+  build-x86_64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Build (stub only)
+        run: |
+          mkdir build && cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSHIM_ENABLE_TFLITE=OFF \
+            -DSHIM_ENABLE_ONNX=OFF
+          make -j$(nproc)
+
+      - name: Test
+        run: |
+          cd build
+          NEURON_SHIM_BACKEND=stub LD_LIBRARY_PATH=. ./shim_test
+
+      - name: Package
+        run: |
+          cd build
+          mkdir -p dist
+          cp libneuronrt.so* libapusys.so* dist/
+          cp ../config/neuron-shim.conf dist/
+          tar czf neuron-shim-x86_64-stub.tar.gz -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neuron-shim-x86_64-stub
+          path: build/neuron-shim-x86_64-stub.tar.gz
+
+  # ----------------------------------------------------------------
+  # Cross-compile aarch64 (the real target)
+  # ----------------------------------------------------------------
+  build-aarch64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            qemu-user-static
+
+      - name: Build (stub only)
+        run: |
+          mkdir build-aarch64 && cd build-aarch64
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DSHIM_ENABLE_TFLITE=OFF \
+            -DSHIM_ENABLE_ONNX=OFF
+          make -j$(nproc)
+
+      - name: Test (via qemu-user)
+        run: |
+          cd build-aarch64
+          NEURON_SHIM_BACKEND=stub \
+          QEMU_LD_PREFIX=/usr/aarch64-linux-gnu \
+          qemu-aarch64-static -L /usr/aarch64-linux-gnu ./shim_test
+
+      - name: Package
+        run: |
+          cd build-aarch64
+          mkdir -p dist
+          cp libneuronrt.so* libapusys.so* dist/
+          cp ../config/neuron-shim.conf dist/
+          tar czf neuron-shim-aarch64-stub.tar.gz -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neuron-shim-aarch64-stub
+          path: build-aarch64/neuron-shim-aarch64-stub.tar.gz
+
+  # ----------------------------------------------------------------
+  # aarch64 + ONNX Runtime (GPU-capable build)
+  # ----------------------------------------------------------------
+  build-aarch64-onnx:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            wget
+
+      - name: Download ONNX Runtime aarch64
+        run: |
+          ORT_VERSION=1.21.1
+          wget -q https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-aarch64-${ORT_VERSION}.tgz
+          tar xzf onnxruntime-linux-aarch64-${ORT_VERSION}.tgz
+          mv onnxruntime-linux-aarch64-${ORT_VERSION} ort-aarch64
+
+      - name: Build with ONNX Runtime
+        run: |
+          mkdir build-aarch64-onnx && cd build-aarch64-onnx
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DSHIM_ENABLE_TFLITE=OFF \
+            -DSHIM_ENABLE_ONNX=ON \
+            -DONNXRUNTIME_DIR=${{ github.workspace }}/ort-aarch64
+          make -j$(nproc)
+
+      - name: Package
+        run: |
+          cd build-aarch64-onnx
+          mkdir -p dist/lib
+          cp libneuronrt.so* libapusys.so* dist/
+          cp ../config/neuron-shim.conf dist/
+          # Bundle ORT runtime lib
+          cp ${{ github.workspace }}/ort-aarch64/lib/libonnxruntime.so* dist/lib/
+          tar czf neuron-shim-aarch64-onnx.tar.gz -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neuron-shim-aarch64-onnx
+          path: build-aarch64-onnx/neuron-shim-aarch64-onnx.tar.gz
+
+  # ----------------------------------------------------------------
+  # x86_64 + ONNX Runtime (for dev/testing with GPU)
+  # ----------------------------------------------------------------
+  build-x86_64-onnx:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake wget
+
+      - name: Download ONNX Runtime x86_64
+        run: |
+          ORT_VERSION=1.21.1
+          wget -q https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz
+          tar xzf onnxruntime-linux-x64-${ORT_VERSION}.tgz
+          mv onnxruntime-linux-x64-${ORT_VERSION} ort-x64
+
+      - name: Build with ONNX Runtime
+        run: |
+          mkdir build-x64-onnx && cd build-x64-onnx
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSHIM_ENABLE_TFLITE=OFF \
+            -DSHIM_ENABLE_ONNX=ON \
+            -DONNXRUNTIME_DIR=${{ github.workspace }}/ort-x64
+          make -j$(nproc)
+
+      - name: Test
+        run: |
+          cd build-x64-onnx
+          NEURON_SHIM_BACKEND=stub \
+          LD_LIBRARY_PATH=.:${{ github.workspace }}/ort-x64/lib \
+          ./shim_test
+
+      - name: Package
+        run: |
+          cd build-x64-onnx
+          mkdir -p dist/lib
+          cp libneuronrt.so* libapusys.so* dist/
+          cp ../config/neuron-shim.conf dist/
+          cp ${{ github.workspace }}/ort-x64/lib/libonnxruntime.so* dist/lib/
+          tar czf neuron-shim-x86_64-onnx.tar.gz -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neuron-shim-x86_64-onnx
+          path: build-x64-onnx/neuron-shim-x86_64-onnx.tar.gz
+
+  # ----------------------------------------------------------------
+  # Create release on tag push
+  # ----------------------------------------------------------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-x86_64, build-aarch64, build-aarch64-onnx, build-x86_64-onnx]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/neuron-shim-x86_64-stub/neuron-shim-x86_64-stub.tar.gz
+            artifacts/neuron-shim-aarch64-stub/neuron-shim-aarch64-stub.tar.gz
+            artifacts/neuron-shim-aarch64-onnx/neuron-shim-aarch64-onnx.tar.gz
+            artifacts/neuron-shim-x86_64-onnx/neuron-shim-x86_64-onnx.tar.gz
+          generate_release_notes: true

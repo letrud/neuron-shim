@@ -49,20 +49,24 @@ set_target_properties(apusys_shim PROPERTIES
 # TFLite backend (optional)                                            #
 # ------------------------------------------------------------------ #
 if(SHIM_ENABLE_TFLITE)
-    # Look for TFLite C API
+    # Accept -DTFLITE_DIR=... or env TFLITE_DIR
+    if(NOT TFLITE_DIR AND DEFINED ENV{TFLITE_DIR})
+        set(TFLITE_DIR $ENV{TFLITE_DIR})
+    endif()
+
     find_library(TFLITE_LIB tensorflowlite_c
         HINTS
             /usr/lib
             /usr/local/lib
             ${CMAKE_SYSROOT}/usr/lib
-            $ENV{TFLITE_DIR}/lib
+            ${TFLITE_DIR}/lib
     )
 
     find_path(TFLITE_INCLUDE tensorflow/lite/c/c_api.h
         HINTS
             /usr/include
             /usr/local/include
-            $ENV{TFLITE_DIR}/include
+            ${TFLITE_DIR}/include
     )
 
     if(TFLITE_LIB AND TFLITE_INCLUDE)
@@ -88,19 +92,26 @@ endif()
 # ONNX Runtime backend (optional — preferred for GPU inference)        #
 # ------------------------------------------------------------------ #
 if(SHIM_ENABLE_ONNX)
+    # Accept -DONNXRUNTIME_DIR=... or env ONNXRUNTIME_DIR
+    if(NOT ONNXRUNTIME_DIR AND DEFINED ENV{ONNXRUNTIME_DIR})
+        set(ONNXRUNTIME_DIR $ENV{ONNXRUNTIME_DIR})
+    endif()
+
     find_library(ONNXRUNTIME_LIB onnxruntime
         HINTS
             /usr/lib
             /usr/local/lib
             ${CMAKE_SYSROOT}/usr/lib
-            $ENV{ONNXRUNTIME_DIR}/lib
+            ${ONNXRUNTIME_DIR}/lib
     )
 
-    find_path(ONNXRUNTIME_INCLUDE onnxruntime/core/session/onnxruntime_c_api.h
+    # ORT release tarballs put headers in include/onnxruntime_c_api.h
+    # System installs put them in include/onnxruntime/core/session/
+    find_path(ONNXRUNTIME_INCLUDE onnxruntime_c_api.h
         HINTS
-            /usr/include
-            /usr/local/include
-            $ENV{ONNXRUNTIME_DIR}/include
+            ${ONNXRUNTIME_DIR}/include
+            /usr/include/onnxruntime/core/session
+            /usr/local/include/onnxruntime/core/session
     )
 
     if(ONNXRUNTIME_LIB AND ONNXRUNTIME_INCLUDE)

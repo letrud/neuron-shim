@@ -1,0 +1,11 @@
+build*/
+*.o
+*.so
+*.so.*
+*.tar.gz
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+shim_test
+neuron-shim.conf

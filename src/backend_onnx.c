@@ -38,7 +38,7 @@
 /* We use the C API (not C++) for maximum ABI stability and to avoid   */
 /* linking issues across different ORT builds.                         */
 /* ------------------------------------------------------------------ */
-#include <onnxruntime/core/session/onnxruntime_c_api.h>
+#include <onnxruntime_c_api.h>
 
 #define MAX_TENSORS 32
 
